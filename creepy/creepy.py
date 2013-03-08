@@ -7,12 +7,17 @@ import MySQLdb
 import sys
 """
 Login to Sina Weibo with cookie
+setdefaultencoding 用于对中文编码的处理
 """
 reload(sys)
 sys.setdefaultencoding('utf8')  
 COOKIE ='你的cookie'
 HEADERS = {'cookie': COOKIE}
 UID= COOKIE[COOKIE.find('uid')+4:COOKIE.find('uid')+14]
+
+'''
+    尝试连接数据库，以供保存诗句
+'''
 try:
     conn=MySQLdb.connect(host='127.0.0.1',user='root',passwd='root',db='weibodata',port=3309,charset='utf8',use_unicode=False)
     cur=conn.cursor()
@@ -20,12 +25,23 @@ except MySQLdb.Error,e:
     print "Mysql Error %d: %s" % (e.args[0], e.args[1])
 
 
+
 def save_user(uuid,uid,name,common):
+    '''
+        save_user(uuid,uid,name,common)
+        用于保存诗句，uuid->uid是用户关系，uuid关注uid
+        uid,name,common是将要保存的用户信息
+        setup.ini中保存有两个数字
+        第一个是now我对当前用户的编号
+        第二个point是当前正在扫描的用户的编号
+        你可以把它们看作是一个队列的两个指针
+    '''
     fileHandle = open ( 'setup.ini','r+');
     now=int(fileHandle.readline())+1;
     point =int(fileHandle.readline())
     print now
     #print uuid,uid,name,common
+    #保存用户关系信息
     count=cur.execute('select * from relations where uid1=\''+str(uuid)+'\' and uid2=\''+str(uid)+'\'')
     if (count==0):
            
@@ -34,7 +50,7 @@ def save_user(uuid,uid,name,common):
             conn.commit()
 
     count=cur.execute('select * from users where uid=\''+str(uid)+'\'')
-    
+    #保存用户信息
     if (count==0):
             cs=common.encode('gbk', 'ignore').decode('gbk', 'ignore').encode('utf-8', 'ignore')
   
@@ -51,6 +67,10 @@ def save_user(uuid,uid,name,common):
     fileHandle.close()
 
 def creepy_myself():
+    '''
+        这是用来扫描你自己的关注列表的
+        我想着得有个开头，所以第一次使用时应调用这个函数为队列添加一些用户再作扩展
+    '''
     uid= COOKIE[COOKIE.find('uid')+4:COOKIE.find('uid')+14]
     url = 'http://weibo.com/'+str(uid)+'/myfollow?t=1&page=1'
     mainurl='http://weibo.com/'+str(uid)+'/myfollow?t=1&page='
@@ -97,6 +117,11 @@ def creepy_myself():
                     
                      
 def creepy_others(uid):
+    '''
+        扫描制定uid用户的信息
+        和上面一样代码有冗余
+        因为要先得到这个用户的关注人数，来计算一共有多少页数据
+    '''
     url="http://weibo.com/"+str(uid)+"/follow?page=";
     req = urllib2.Request(url, headers=HEADERS)
     text = urllib2.urlopen(req).read()
@@ -155,8 +180,15 @@ def creepy_others(uid):
 if __name__ == '__main__':
     #save_user('123','123','ads','212332231')
     #creepy_myself()
-    
+    '''
+        虽然很谨慎地处理了中文编码，但每过一段时间还是会有一些问题
+        于是抛掉了所有异常，防止程序中断
+    '''
     while(1):
+        '''
+            首先取得队列的尾指针，也就是point
+            根据point从数据库中找到uid，然后creepy_others(uuid)
+        '''
         fileHandle = open ( 'setup.ini','r+');
         now=int(fileHandle.readline());
         point =int(fileHandle.readline())+1;
